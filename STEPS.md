@@ -21,7 +21,7 @@ If TR disruption shifts the schedule, cut from Phase 3 first (eval suite, then b
 
 ### 1.1 Project initialization
 
-- Initialize Next.js 15 project with TypeScript strict, Tailwind, ESLint.
+- Initialize Next.js 16 project with TypeScript strict, Tailwind, ESLint.
 - Install dependencies: `openai`, `zod`, `react-hook-form`, `@hookform/resolvers`. Add shadcn/ui with the components needed for forms and tables.
 - Create the file structure described in CLAUDE.md (empty stubs are fine; populate as phases proceed).
 - Initialize Git, create GitHub repo via `gh repo create <name> --public --source=. --remote=origin --push`.

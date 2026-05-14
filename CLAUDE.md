@@ -14,7 +14,7 @@ If any of these documents conflict, surface the conflict rather than silently ch
 
 ## Stack
 
-- **Framework:** Next.js 15 with App Router, TypeScript strict mode.
+- **Framework:** Next.js 16 with App Router, TypeScript strict mode. Next.js 16 contains breaking changes from earlier versions; any future Next.js-specific code must consult `AGENTS.md` at the repo root and `node_modules/next/dist/docs/` before writing code, and must not rely on Next.js 15 or earlier patterns recalled from training data.
 - **Styling:** Tailwind CSS. shadcn/ui for primitive components.
 - **AI model (production code path):** OpenAI `gpt-5.4-mini` for vision + Structured Outputs. Fallback to `gpt-5.4` documented as an option if eval quality is insufficient; do not switch without surfacing the trade-off first.
 - **Schema validation:** Zod. Use `zodResponseFormat` from `openai/helpers/zod` to bind verdict schemas to API calls.

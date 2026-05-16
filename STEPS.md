@@ -60,6 +60,18 @@ If TR disruption shifts the schedule, cut from Phase 3 first (eval suite, then b
 
 **Acceptance:** Given a `VerificationResult` from the model and an `ExpectedValues` object, the verifier produces a final array of verdicts matching the schema.
 
+### 1.4.5 Image preprocessing
+
+End-to-end testing of Phase 1.4 against a 3.3 MB native PNG measured 16.7 s on the cold call and 14.0 s on warm calls — well above the 5 s latency budget. The dominant cost was uploading bytes that OpenAI's vision pipeline downsamples and discards. This phase inserts a normalization step between filesystem (or HTTP) read and the OpenAI call.
+
+- `lib/image-prep.ts` exports `normalizeForExtraction(bytes: Buffer | Uint8Array)`. It applies EXIF Orientation, resizes so the longer dimension is ≤ 1568 px (no upscaling smaller inputs), and re-encodes as JPEG quality 85.
+- Returns a discriminated outcome mirroring `extractFields.ts`: `{ ok: true, dataUrl, mime, originalBytes, normalizedBytes, originalDimensions, normalizedDimensions } | { ok: false, kind, message, cause? }`. Failure kinds: `invalid_image`, `unsupported_format`, `processing_error`.
+- Accepts JPEG, PNG, and WebP inputs. Anything else returns `unsupported_format` rather than throwing.
+- File I/O is the caller's responsibility — the module operates on raw bytes.
+- Phase 1.5's API route will call `normalizeForExtraction` between Zod-validating the multipart upload and invoking `extractFields`, so the preprocessing pays back for both the scratch script and the production code path.
+
+**Acceptance:** `pnpm scratch:extract evals/fixtures/sample-1.png` round-trips end-to-end with latency ≤ 5 seconds on a warm call.
+
 ### 1.5 API route
 
 - `app/api/verify/route.ts`: POST handler that accepts multipart form data (image + JSON-encoded expected values), validates with Zod, calls `extractFields`, runs the verifier, returns a `VerificationResult`.

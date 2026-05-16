@@ -9,6 +9,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { normalizeForExtraction } from "@/lib/image-prep";
 import { extractFields } from "@/lib/openai/extractFields";
 import { runVerifier } from "@/lib/verifiers/fieldVerdict";
 import type { ExpectedValuesInput } from "@/lib/schema";
@@ -42,13 +43,20 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  const mime = imagePath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
-  const dataUrl = `data:${mime};base64,${imageBytes.toString("base64")}`;
+  console.log(`[scratch] Image:    ${absImagePath} (${imageBytes.length} bytes on disk)`);
 
-  console.log(`[scratch] Image:    ${absImagePath} (${imageBytes.length} bytes, ${mime})`);
+  const normalized = await normalizeForExtraction(imageBytes);
+  if (!normalized.ok) {
+    console.error(`\n[scratch] Image normalization failed (${normalized.kind}): ${normalized.message}`);
+    process.exit(1);
+  }
+  const { originalBytes, normalizedBytes, originalDimensions: od, normalizedDimensions: nd } = normalized;
+  console.log(
+    `[scratch] Normalized: ${originalBytes} → ${normalizedBytes} bytes, ${od.width}x${od.height} → ${nd.width}x${nd.height} jpeg`,
+  );
   console.log(`[scratch] Calling extractFields against gpt-5.4-mini...`);
 
-  const outcome = await extractFields({ imageDataUrl: dataUrl, expected: SAMPLE_EXPECTED });
+  const outcome = await extractFields({ imageDataUrl: normalized.dataUrl, expected: SAMPLE_EXPECTED });
   if (!outcome.ok) {
     console.error(`\n[scratch] extractFields failed (${outcome.kind}): ${outcome.message}`);
     process.exit(1);

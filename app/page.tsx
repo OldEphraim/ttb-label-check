@@ -1,65 +1,170 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import { LoaderCircle, TriangleAlert } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ResultsTable } from "@/components/ResultsTable";
+import { UploadForm, type UploadSubmitPayload } from "@/components/UploadForm";
+import { VerificationResultSchema, type VerificationResult } from "@/lib/schema";
+
+type Status =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ok"; result: VerificationResult };
 
 export default function Home() {
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  async function handleSubmit({ image, expected }: UploadSubmitPayload) {
+    setStatus({ kind: "loading" });
+    const formData = new FormData();
+    formData.append("image", image);
+    formData.append("expected", JSON.stringify(expected));
+
+    let response: Response;
+    try {
+      response = await fetch("/api/verify", { method: "POST", body: formData });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network request failed.";
+      setStatus({ kind: "error", message });
+      return;
+    }
+
+    let json: unknown;
+    try {
+      json = await response.json();
+    } catch {
+      setStatus({
+        kind: "error",
+        message:
+          response.ok
+            ? "Server returned a non-JSON response."
+            : `Server returned ${response.status} ${response.statusText}.`,
+      });
+      return;
+    }
+
+    if (!response.ok) {
+      const message = readErrorMessage(json) ?? `Verification failed (${response.status}).`;
+      setStatus({ kind: "error", message });
+      return;
+    }
+
+    const parsed = VerificationResultSchema.safeParse(json);
+    if (!parsed.success) {
+      setStatus({
+        kind: "error",
+        message: "Server returned a response that did not match the expected verification schema.",
+      });
+      return;
+    }
+    setStatus({ kind: "ok", result: parsed.data });
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          TTB Label Verification
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Upload a beverage label and the expected field values from the matching application.
+          The tool returns per-field verdicts you use to make a final compliance decision.
+        </p>
+      </header>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Label and expected values</CardTitle>
+          <CardDescription>
+            JPEG or PNG, up to 10 MB. All fields are required; country of origin is required when the import switch is on.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <UploadForm busy={status.kind === "loading"} onSubmit={handleSubmit} />
+        </CardContent>
+      </Card>
+
+      {status.kind === "loading" ? (
+        <Alert>
+          <LoaderCircle className="animate-spin" aria-hidden="true" />
+          <AlertTitle>Verifying...</AlertTitle>
+          <AlertDescription>
+            Calling the extraction model. Typical round trips take a few seconds.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status.kind === "error" ? (
+        <Alert variant="destructive">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>Something went wrong</AlertTitle>
+          <AlertDescription>
+            <p>{status.message}</p>
+            <div className="mt-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStatus({ kind: "idle" })}
+              >
+                Try again
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status.kind === "ok" && status.result.imageQuality === "insufficient" ? (
+        <Alert variant="destructive">
+          <TriangleAlert aria-hidden="true" />
+          <AlertTitle>Image quality is too low for reliable verification</AlertTitle>
+          <AlertDescription>
+            <p>Please re-upload a clearer photo.</p>
+            {status.result.imageQualityReason ? (
+              <p className="mt-1">Reason: {status.result.imageQualityReason}.</p>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {status.kind === "ok" && status.result.imageQuality === "sufficient" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Verdicts</CardTitle>
+            <CardDescription>
+              Per-field outcomes. Use these as inputs to your final compliance decision, not as the decision itself.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ResultsTable fields={status.result.fields} />
+          </CardContent>
+        </Card>
+      ) : null}
+    </main>
   );
+}
+
+function readErrorMessage(json: unknown): string | undefined {
+  if (
+    json &&
+    typeof json === "object" &&
+    "error" in json &&
+    json.error &&
+    typeof json.error === "object" &&
+    "message" in json.error &&
+    typeof (json.error as { message: unknown }).message === "string"
+  ) {
+    return (json.error as { message: string }).message;
+  }
+  return undefined;
 }

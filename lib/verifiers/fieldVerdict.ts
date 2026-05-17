@@ -1,12 +1,25 @@
 // PASS / FAIL / NEEDS_REVIEW decision logic for each verifiable field (Phase 1.4 / 2.1).
 //
-// Phase 1: exact match after normalization → PASS, otherwise FAIL.
-// NEEDS_REVIEW (case-only differences, unit notation, low confidence, etc.) is Phase 2.1.
-// The model already returns a verdict; this verifier layer is where deterministic rules
-// override model judgment. Phase 1 only enforces (a) the isImport skip rule for
-// countryOfOrigin and (b) the exact-match → PASS rule. Other model verdicts pass through.
+// Per-field comparison chain (first match wins):
+//   1. Strict match (equal after trim) → PASS.
+//   2. Model self-reported PASS with confidence < 0.7 → NEEDS_REVIEW (low confidence).
+//   3. Whitespace-only difference → NEEDS_REVIEW.
+//   4. Punctuation-only difference → NEEDS_REVIEW.
+//   5. Case-only difference → NEEDS_REVIEW.
+//   6. Substring containment (either direction) after trim + collapse + casefold
+//      → NEEDS_REVIEW.
+//   7. Otherwise → FAIL.
+//
+// The governmentWarning field still passes through — Phase 2.2's strict checker
+// owns it. countryOfOrigin is dropped entirely when !isImport.
 
-import { isExactMatch } from "./normalize";
+import {
+  containsAfterNormalize,
+  isCaseOnlyDifference,
+  isPunctuationOnlyDifference,
+  isStrictMatch,
+  isWhitespaceOnlyDifference,
+} from "./normalize";
 import type {
   ExpectedValuesInput,
   FieldVerdict,
@@ -16,8 +29,6 @@ import type {
 
 type ExpectedAccessor = (e: ExpectedValuesInput) => string | undefined;
 
-// governmentWarning has no per-agent expected value — its "expected" is the canonical
-// statutory text, supplied by the prompt and echoed back by the model.
 const EXPECTED_BY_FIELD: Partial<Record<VerifiableField, ExpectedAccessor>> = {
   brandName: (e) => e.brandName,
   classType: (e) => e.classType,
@@ -26,6 +37,8 @@ const EXPECTED_BY_FIELD: Partial<Record<VerifiableField, ExpectedAccessor>> = {
   bottlerNameAddress: (e) => e.bottlerNameAddress,
   countryOfOrigin: (e) => e.countryOfOrigin,
 };
+
+const LOW_CONFIDENCE_THRESHOLD = 0.7;
 
 export function runVerifier(
   modelResult: VerificationResult,
@@ -36,11 +49,14 @@ export function runVerifier(
   }
   return modelResult.fields
     .filter((v) => !(v.field === "countryOfOrigin" && !expected.isImport))
-    .map((v) => applyPhase1Rules(v, expected));
+    .map((v) => applyComparisonChain(v, expected));
 }
 
-function applyPhase1Rules(v: FieldVerdict, expected: ExpectedValuesInput): FieldVerdict {
-  // Phase 2.2 will replace this trust-the-model branch with a dedicated strict checker.
+function applyComparisonChain(
+  v: FieldVerdict,
+  expected: ExpectedValuesInput,
+): FieldVerdict {
+  // Phase 2.2 owns the warning strict-check; for now, trust the model verbatim.
   if (v.field === "governmentWarning") {
     return v;
   }
@@ -49,13 +65,77 @@ function applyPhase1Rules(v: FieldVerdict, expected: ExpectedValuesInput): Field
   if (expectedValue === undefined || expectedValue === "") {
     return v;
   }
-  const match = isExactMatch(v.extracted, expectedValue);
+
+  // 1. Strict match → PASS.
+  if (isStrictMatch(v.extracted, expectedValue)) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "PASS",
+      rationale: "Extracted value matches expected exactly (after trimming).",
+    };
+  }
+
+  // 2. Low-confidence model PASS → NEEDS_REVIEW.
+  if (v.verdict === "PASS" && v.confidence < LOW_CONFIDENCE_THRESHOLD) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "NEEDS_REVIEW",
+      rationale: `Model reported a match but with low confidence (${v.confidence.toFixed(2)}); manual review recommended.`,
+    };
+  }
+
+  // 3. Whitespace-only.
+  if (isWhitespaceOnlyDifference(v.extracted, expectedValue)) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "NEEDS_REVIEW",
+      rationale:
+        "Extracted and expected match after whitespace normalization; difference appears to be whitespace-only.",
+    };
+  }
+
+  // 4. Punctuation-only.
+  if (isPunctuationOnlyDifference(v.extracted, expectedValue)) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "NEEDS_REVIEW",
+      rationale:
+        "Extracted and expected match after punctuation normalization; difference appears to be punctuation-only.",
+    };
+  }
+
+  // 5. Case-only.
+  if (isCaseOnlyDifference(v.extracted, expectedValue)) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "NEEDS_REVIEW",
+      rationale:
+        "Extracted and expected match after case normalization; difference appears to be case-only.",
+    };
+  }
+
+  // 6. Substring containment.
+  if (containsAfterNormalize(v.extracted, expectedValue)) {
+    return {
+      ...v,
+      expected: expectedValue,
+      verdict: "NEEDS_REVIEW",
+      rationale:
+        "Extracted text contains the expected value (or vice versa) with additional context; manual review recommended to confirm semantic equivalence.",
+    };
+  }
+
+  // 7. No trigger matched → FAIL.
   return {
     ...v,
     expected: expectedValue,
-    verdict: match ? "PASS" : "FAIL",
-    rationale: match
-      ? "Extracted value matches expected after trim/whitespace/case normalization."
-      : "Extracted value does not match expected after trim/whitespace/case normalization.",
+    verdict: "FAIL",
+    rationale:
+      "Extracted value does not match expected after trim, whitespace, punctuation, case, or containment checks.",
   };
 }

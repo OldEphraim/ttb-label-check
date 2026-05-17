@@ -18,7 +18,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { normalizeForExtraction } from "@/lib/image-prep";
 import { extractFields } from "@/lib/openai/extractFields";
 import { runVerifier } from "@/lib/verifiers/fieldVerdict";
-import { ExpectedValuesSchema, type VerificationResult } from "@/lib/schema";
+import { ExpectedValuesSchema, type VerifyApiResponse } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
@@ -109,10 +109,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const fields = runVerifier(extraction.result, expected);
-  const body: VerificationResult = {
+  const body: VerifyApiResponse = {
     imageQuality: extraction.result.imageQuality,
     imageQualityReason: extraction.result.imageQualityReason,
     fields,
+    normalizedImageDataUrl: normalized.dataUrl,
+    normalizedImageDimensions: normalized.normalizedDimensions,
   };
   return NextResponse.json(body);
 }

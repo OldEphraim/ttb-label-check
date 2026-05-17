@@ -1,9 +1,15 @@
-// Single verdict row: field, extracted vs expected, verdict badge, rationale (Phase 1.6).
+// Single verdict row: audit thumbnail, field, extracted vs expected, verdict badge, rationale (Phase 1.6 / 2.3).
 import { CircleCheck, CircleX, TriangleAlert } from "lucide-react";
 
+import { AuditThumbnail } from "@/components/AuditThumbnail";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { FieldVerdict, VerdictTier, VerifiableField } from "@/lib/schema";
+import type {
+  FieldVerdict,
+  NormalizedImageDimensions,
+  VerdictTier,
+  VerifiableField,
+} from "@/lib/schema";
 
 const FIELD_LABELS: Record<VerifiableField, string> = {
   brandName: "Brand name",
@@ -39,14 +45,27 @@ const VERDICT_STYLES: Record<VerdictTier, VerdictStyle> = {
   },
 };
 
-export function VerdictRow({ verdict }: { verdict: FieldVerdict }) {
+export type VerdictRowProps = {
+  verdict: FieldVerdict;
+  imageDataUrl: string;
+  imageDimensions: NormalizedImageDimensions;
+};
+
+export function VerdictRow({ verdict, imageDataUrl, imageDimensions }: VerdictRowProps) {
   const style = VERDICT_STYLES[verdict.verdict];
   const Icon = style.Icon;
+  const fieldLabel = FIELD_LABELS[verdict.field];
   return (
     <TableRow>
-      <TableCell className="font-medium whitespace-normal">
-        {FIELD_LABELS[verdict.field]}
+      <TableCell>
+        <AuditThumbnail
+          imageDataUrl={imageDataUrl}
+          imageDimensions={imageDimensions}
+          boundingBox={verdict.boundingBox}
+          altText={`Full label, ${fieldLabel} region highlighted`}
+        />
       </TableCell>
+      <TableCell className="font-medium whitespace-normal">{fieldLabel}</TableCell>
       <TableCell className="whitespace-normal break-words">{verdict.expected}</TableCell>
       <TableCell className="whitespace-normal break-words">{verdict.extracted}</TableCell>
       <TableCell>

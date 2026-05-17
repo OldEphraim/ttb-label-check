@@ -81,7 +81,7 @@ export function buildExtractionPrompt(expected: ExpectedValuesInput): string {
     "2. Always set `expected` to the agent's value for that field (or, for governmentWarning, to the canonical text above).",
     "3. Set `verdict` to PASS if the extracted value matches the expected value (exact match after trimming and casefolding), otherwise FAIL. The verifier layer applies a NEEDS_REVIEW tier deterministically — you should not emit NEEDS_REVIEW yourself. For the governmentWarning row, set `verdict` to PASS if all four sub-checks are true, otherwise FAIL; the verifier overrides this deterministically from `warningSubchecks` either way.",
     "4. `confidence` is between 0 and 1.",
-    "5. `auditThumbnail` must be null for now (Phase 2.3 will populate it).",
+    "5. `boundingBox` is an approximate rectangle covering the region of the label that justified your extracted value, in image-normalized coordinates (x, y, width, height each in [0, 1], with (0,0) at the top-left of the image). The box should encompass the visible text/region for the field — for governmentWarning, the box covers the full warning block (not just the prefix). Set `boundingBox` to null only if you can't confidently locate the region (e.g. the field is not visible).",
     "6. Set `imageQualityReason` to null if `imageQuality` is \"sufficient\".",
     "7. `warningSubchecks` must be null on every field except governmentWarning. On the governmentWarning row, populate all four boolean sub-checks per the section above.",
   ].join("\n");

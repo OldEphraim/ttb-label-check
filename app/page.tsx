@@ -14,13 +14,13 @@ import {
 } from "@/components/ui/card";
 import { ResultsTable } from "@/components/ResultsTable";
 import { UploadForm, type UploadSubmitPayload } from "@/components/UploadForm";
-import { VerificationResultSchema, type VerificationResult } from "@/lib/schema";
+import { VerifyApiResponseSchema, type VerifyApiResponse } from "@/lib/schema";
 
 type Status =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ok"; result: VerificationResult };
+  | { kind: "ok"; result: VerifyApiResponse };
 
 export default function Home() {
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -60,7 +60,7 @@ export default function Home() {
       return;
     }
 
-    const parsed = VerificationResultSchema.safeParse(json);
+    const parsed = VerifyApiResponseSchema.safeParse(json);
     if (!parsed.success) {
       setStatus({
         kind: "error",
@@ -143,10 +143,15 @@ export default function Home() {
             <CardTitle>Verdicts</CardTitle>
             <CardDescription>
               Per-field outcomes. Use these as inputs to your final compliance decision, not as the decision itself.
+              Click any thumbnail to see the full label with the attended region highlighted.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ResultsTable fields={status.result.fields} />
+            <ResultsTable
+              fields={status.result.fields}
+              imageDataUrl={status.result.normalizedImageDataUrl}
+              imageDimensions={status.result.normalizedImageDimensions}
+            />
           </CardContent>
         </Card>
       ) : null}

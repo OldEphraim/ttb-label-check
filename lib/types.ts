@@ -11,4 +11,7 @@ export type {
   FieldVerdict,
   VerificationResult,
   WarningSubchecks,
+  BoundingBox,
+  NormalizedImageDimensions,
+  VerifyApiResponse,
 } from "@/lib/schema";

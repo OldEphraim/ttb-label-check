@@ -155,6 +155,8 @@ End-to-end testing of Phase 1.4 against a 3.3 MB native PNG measured 16.7 s on t
 
 **Acceptance:** `pnpm eval` runs against all smoke fixtures and reports the expected outcomes.
 
+**Fixture availability:** the runner (`evals/run.ts`) and `<name>.expected.json` sidecar format are in place. The imperfect-but-legible and government-warning-failure images themselves are deferred until the operator generates them (Phase 3.4 or beyond); dropping new image + sidecar pairs into `evals/fixtures/` picks them up automatically with no code change. `sample-1` (clean happy-path) is the only fixture committed today and is enough to validate the smoke-runner infrastructure end-to-end.
+
 ### 2.5 Deploy
 
 - Push and verify the deployed URL still works with the new logic.

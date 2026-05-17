@@ -47,6 +47,17 @@ export const ExpectedValuesSchema = ExpectedValuesBaseSchema.superRefine((value,
   }
 });
 
+// Government Warning four-sub-check structure (Phase 2.2). The model populates this
+// object on the governmentWarning field only; for every other field the property is
+// null. The verifier reads these booleans deterministically to decide PASS/FAIL on
+// the warning row.
+export const WarningSubchecksSchema = z.object({
+  present: z.boolean(),
+  exactText: z.boolean(),
+  prefixAllCaps: z.boolean(),
+  prefixBold: z.boolean(),
+});
+
 // VerificationResult is the model's structured output (Phase 1.3) and the API response.
 // OpenAI Structured Outputs strict mode requires every property to be in `required`, so
 // optional model-side fields are declared as `.nullable()` rather than `.optional()`.
@@ -59,6 +70,9 @@ export const FieldVerdictSchema = z.object({
   rationale: z.string(),
   // Audit thumbnail (cropped data URL) is populated in Phase 2.3.
   auditThumbnail: z.string().nullable(),
+  // Government warning four-sub-check booleans (Phase 2.2). Null on every field
+  // except governmentWarning, where the model populates all four assessments.
+  warningSubchecks: WarningSubchecksSchema.nullable(),
 });
 
 export const VerificationResultSchema = z.object({
@@ -76,3 +90,4 @@ export type ExpectedValues = z.infer<typeof ExpectedValuesSchema>;
 export type ExpectedValuesInput = z.input<typeof ExpectedValuesSchema>;
 export type FieldVerdict = z.infer<typeof FieldVerdictSchema>;
 export type VerificationResult = z.infer<typeof VerificationResultSchema>;
+export type WarningSubchecks = z.infer<typeof WarningSubchecksSchema>;

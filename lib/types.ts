@@ -10,4 +10,5 @@ export type {
   ExpectedValuesInput,
   FieldVerdict,
   VerificationResult,
+  WarningSubchecks,
 } from "@/lib/schema";

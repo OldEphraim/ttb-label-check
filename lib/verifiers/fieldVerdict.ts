@@ -1,6 +1,6 @@
-// PASS / FAIL / NEEDS_REVIEW decision logic for each verifiable field (Phase 1.4 / 2.1).
+// PASS / FAIL / NEEDS_REVIEW decision logic for each verifiable field (Phase 1.4 / 2.1 / 2.2).
 //
-// Per-field comparison chain (first match wins):
+// Per-field comparison chain for non-warning fields (first match wins):
 //   1. Strict match (equal after trim) → PASS.
 //   2. Model self-reported PASS with confidence < 0.7 → NEEDS_REVIEW (low confidence).
 //   3. Whitespace-only difference → NEEDS_REVIEW.
@@ -10,8 +10,11 @@
 //      → NEEDS_REVIEW.
 //   7. Otherwise → FAIL.
 //
-// The governmentWarning field still passes through — Phase 2.2's strict checker
-// owns it. countryOfOrigin is dropped entirely when !isImport.
+// The governmentWarning field is handled by `decideWarningVerdict`, which reads
+// the four warningSubchecks booleans (Phase 2.2) and emits PASS only if all four
+// are true; otherwise FAIL with a rationale identifying the failing sub-check(s)
+// in priority order (presence → exact text → all-caps prefix → bold prefix).
+// countryOfOrigin is dropped entirely when !isImport.
 
 import {
   containsAfterNormalize,
@@ -56,9 +59,8 @@ function applyComparisonChain(
   v: FieldVerdict,
   expected: ExpectedValuesInput,
 ): FieldVerdict {
-  // Phase 2.2 owns the warning strict-check; for now, trust the model verbatim.
   if (v.field === "governmentWarning") {
-    return v;
+    return decideWarningVerdict(v);
   }
   const accessor = EXPECTED_BY_FIELD[v.field];
   const expectedValue = accessor?.(expected);
@@ -137,5 +139,46 @@ function applyComparisonChain(
     verdict: "FAIL",
     rationale:
       "Extracted value does not match expected after trim, whitespace, punctuation, case, or containment checks.",
+  };
+}
+
+// Phase 2.2 strict checker for the Government Warning Statement. The four
+// sub-checks are evaluated by the vision model and returned in
+// v.warningSubchecks; this function only applies the deterministic rule that
+// all four must be true for PASS, and identifies the failing sub-checks in
+// priority order (presence is most fundamental; bold is most cosmetic).
+function decideWarningVerdict(v: FieldVerdict): FieldVerdict {
+  if (!v.warningSubchecks) {
+    return {
+      ...v,
+      verdict: "FAIL",
+      rationale:
+        "Government warning sub-check data missing from the model output; cannot verify the four required conditions.",
+    };
+  }
+  const sc = v.warningSubchecks;
+  const failures: string[] = [];
+  if (!sc.present) failures.push("warning statement is not present on the label");
+  if (!sc.exactText)
+    failures.push("statutory wording does not exactly match the canonical text");
+  if (!sc.prefixAllCaps)
+    failures.push('"GOVERNMENT WARNING:" prefix is not rendered in all capital letters');
+  if (!sc.prefixBold)
+    failures.push(
+      '"GOVERNMENT WARNING:" prefix is not visually bold relative to surrounding text',
+    );
+
+  if (failures.length === 0) {
+    return {
+      ...v,
+      verdict: "PASS",
+      rationale:
+        'All four sub-checks passed: warning present, exact statutory text, "GOVERNMENT WARNING:" prefix in all caps, prefix visually bold.',
+    };
+  }
+  return {
+    ...v,
+    verdict: "FAIL",
+    rationale: `Government warning failed sub-check(s): ${failures.join("; ")}.`,
   };
 }

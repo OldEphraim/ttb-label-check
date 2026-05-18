@@ -1,27 +1,41 @@
 # Evals
 
-Smoke-level fixture infrastructure (Phase 2.4). Phase 3.4 will extend this into a per-field accuracy report against a broader fixture set.
+Per-field accuracy reporting (Phase 3.4) on top of the Phase 2.4 fixture loader.
 
 ## Fixture format
 
 Each fixture is a pair of files in `evals/fixtures/`:
 
 - `<name>.png` (or `.jpg` / `.jpeg`) — the label image.
-- `<name>.expected.json` — JSON object matching `ExpectedValuesSchema` from `lib/schema.ts`: `brandName`, `classType`, `alcoholContent`, `netContents`, `bottlerNameAddress`, `beverageType`, `isImport`, and `countryOfOrigin` when `isImport` is `true`.
+- `<name>.expected.json` — top-level fields are the agent's expected `ExpectedValuesInput` (`brandName`, `classType`, `alcoholContent`, `netContents`, `bottlerNameAddress`, `beverageType`, `isImport`, and `countryOfOrigin` when `isImport` is `true`). Plus an optional `expectedVerdicts` map keyed by verifiable field.
 
-The runner discovers every `*.png|.jpg|.jpeg` file in the directory that has a matching `*.expected.json` sidecar.
+### `expectedVerdicts`
+
+Each entry is a single `VerdictTier` (`"PASS"`, `"FAIL"`, or `"NEEDS_REVIEW"`) — or, because the vision model is stochastic, an array of acceptable tiers. For example:
+
+```json
+"expectedVerdicts": {
+  "brandName": ["PASS", "NEEDS_REVIEW"],
+  "classType": "PASS",
+  "alcoholContent": ["PASS", "NEEDS_REVIEW"],
+  "netContents": "PASS",
+  "bottlerNameAddress": "NEEDS_REVIEW",
+  "governmentWarning": "PASS"
+}
+```
+
+- A single tier asserts the verdict must equal that value.
+- An array asserts the verdict must be in the set.
+
+Fields not present in `expectedVerdicts` aren't compared — the runner prints the actual verdict as informational signal (`·` flag) but neither passes nor fails the fixture on them.
+
+If `expectedVerdicts` is omitted entirely, the fixture only runs the pipeline-completion smoke check from Phase 2.4 — useful for "I just want to know the pipeline doesn't throw" cases.
 
 ## Current fixtures
 
-- **`sample-1.png`** — synthetic AI-generated bourbon label (Old Tom Distillery, Bardstown KY). Clean rendering of all fields, correctly-styled Government Warning. Used as the canonical happy-path smoke case.
+- **`sample-1.png`** — synthetic AI-generated bourbon label (Old Tom Distillery, Bardstown KY). Clean rendering of all fields, correctly-styled Government Warning. `expectedVerdicts` admits the observed model stochasticity (brand returned either as `Old Tom Distillery` or `OLD TOM DISTILLERY`, alcohol content occasionally appending `(90 Proof)`).
 
-Phase 3.4 will broaden coverage to 8–12 fixtures, including:
-
-- An imperfect-but-legible image (mild angle skew or partial glare, all fields still extractable).
-- A NEEDS_REVIEW edge case (e.g. brand-name casing mismatch like the canonical `STONE'S THROW` vs `Stone's Throw`).
-- A Government Warning failure mode (lowercase prefix, non-bold prefix, or modified wording).
-
-These additional fixtures are deferred because they require new label images that aren't yet generated. The runner and schema already support them — drop new pairs into `evals/fixtures/` and they get picked up automatically.
+Expanding to 8–12 fixtures (per STEPS.md Phase 3.4) is a deferred manual task — the infrastructure already supports them; the operator just needs to drop new image + sidecar pairs into `evals/fixtures/`. Coverage targets the imperfect-but-legible case, additional NEEDS_REVIEW edge cases, and the four government-warning failure modes (missing, lowercase prefix, non-bold prefix, modified wording).
 
 ## How to run
 
@@ -29,8 +43,14 @@ These additional fixtures are deferred because they require new label images tha
 pnpm eval
 ```
 
-Runs each discovered fixture through the same pipeline as the API route (normalize → extract → verify) without going through HTTP. Per fixture, prints latency, the count of PASS / NEEDS_REVIEW / FAIL verdicts, and the Government Warning row's verdict.
+For each fixture, prints:
+- A header row with latency and matched-count summary.
+- One line per verified field with the actual verdict and expected set, flagged `✓` / `✗` / `·` (untested).
+- An overall accuracy figure and a per-field accuracy table once all fixtures are done.
 
-Requires `OPENAI_API_KEY` in `.env.local`. Exits non-zero if any fixture errored.
+Exit code:
+- `0` — every tested verdict matched its expected set.
+- `1` — at least one mismatch, or a pipeline error on any fixture.
+- `2` — no fixtures discovered.
 
-The smoke runner does not yet compare verdicts against expected ones — that comparison is Phase 3.4. For now the success criterion is "the pipeline completed without error and produced a parseable `VerificationResult`."
+Requires `OPENAI_API_KEY` in `.env.local`.

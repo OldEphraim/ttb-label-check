@@ -5,5 +5,13 @@
   "netContents": "750 mL",
   "bottlerNameAddress": "Old Tom Distillery, Bardstown, KY",
   "beverageType": "distilled_spirits",
-  "isImport": false
+  "isImport": false,
+  "expectedVerdicts": {
+    "brandName": ["PASS", "NEEDS_REVIEW"],
+    "classType": "PASS",
+    "alcoholContent": ["PASS", "NEEDS_REVIEW"],
+    "netContents": "PASS",
+    "bottlerNameAddress": "NEEDS_REVIEW",
+    "governmentWarning": "PASS"
+  }
 }

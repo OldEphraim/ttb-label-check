@@ -5,7 +5,7 @@
 //   - `expected`  (string) - JSON-encoded ExpectedValues form payload.
 //
 // Pipeline: parse multipart → validate image type/size → JSON-parse + Zod-validate
-// `expected` → normalizeForExtraction → extractFields → runVerifier → respond.
+// `expected` → verifyLabel (normalize → extract → verify) → respond.
 //
 // All errors return `{ error: { kind, message, issues? } }` as JSON. No HTML pages.
 // Next.js 16 route handlers use the Web Request/Response API; `request.formData()`
@@ -15,10 +15,8 @@
 // Runtime is Node.js because sharp (image-prep) and the OpenAI SDK require it.
 import { type NextRequest, NextResponse } from "next/server";
 
-import { normalizeForExtraction } from "@/lib/image-prep";
-import { extractFields } from "@/lib/openai/extractFields";
-import { runVerifier } from "@/lib/verifiers/fieldVerdict";
-import { ExpectedValuesSchema, type VerifyApiResponse } from "@/lib/schema";
+import { verifyLabel } from "@/lib/pipeline";
+import { ExpectedValuesSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
@@ -86,17 +84,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const expected = parsedExpected.data;
 
   const buffer = Buffer.from(await imageField.arrayBuffer());
-  const normalized = await normalizeForExtraction(buffer);
-  if (!normalized.ok) {
-    return errorResponse(502, normalized.kind, normalized.message);
-  }
-
-  const extraction = await extractFields({
-    imageDataUrl: normalized.dataUrl,
-    expected,
-  });
-  if (!extraction.ok) {
-    if (extraction.kind === "missing_api_key") {
+  const outcome = await verifyLabel(buffer, expected);
+  if (!outcome.ok) {
+    if (outcome.kind === "missing_api_key") {
       // Don't leak the underlying detail; CLAUDE.md "no silent failures" still applies
       // — the caller gets an explicit explanation, just not the secret-leaking one.
       return errorResponse(
@@ -105,16 +95,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         "The server is misconfigured. Please contact an administrator.",
       );
     }
-    return errorResponse(502, extraction.kind, extraction.message);
+    return errorResponse(502, outcome.kind, outcome.message);
   }
 
-  const fields = runVerifier(extraction.result, expected);
-  const body: VerifyApiResponse = {
-    imageQuality: extraction.result.imageQuality,
-    imageQualityReason: extraction.result.imageQualityReason,
-    fields,
-    normalizedImageDataUrl: normalized.dataUrl,
-    normalizedImageDimensions: normalized.normalizedDimensions,
-  };
-  return NextResponse.json(body);
+  return NextResponse.json(outcome.body);
 }
